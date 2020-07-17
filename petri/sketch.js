@@ -1,5 +1,5 @@
-const worldWidth = 35;
-const worldHeight = 35;
+const worldWidth = 50;
+const worldHeight = 50;
 const tileSize = 20;
 let world = [];
 let frameNum = 42;
@@ -148,26 +148,20 @@ function worldGen(worldWidth, worldHeight) {
 }
 
 function tileToPixels(x, y, tileSize, terrain) {
-  // x = 0...200
-  // y = 0...200
   colors = tileType[terrain];
-  for (let wIndex = 0; wIndex < tileSize; wIndex++) {
-    for (let hIndex = 0; hIndex < tileSize; hIndex++) {
-      for (let w = 0; w < tileSize; w++) {
-        for (let h = 0; h < tileSize; h++) {
-          let base =
-            x * 4 * tileSize +
-            4 * w +
-            tileSize * h * 4 * worldWidth +
-            y * 4 * tileSize * worldWidth * tileSize;
+  for (let w = 0; w < tileSize; w++) {
+    for (let h = 0; h < tileSize; h++) {
+      let base =
+        x * 4 * tileSize +
+        4 * w +
+        tileSize * h * 4 * worldWidth +
+        y * 4 * tileSize * worldWidth * tileSize;
 
-          let noise = 0.95 + Math.random() * 0.1;
-          pixels[base] = colors[0] * noise;
-          pixels[base + 1] = colors[1] * noise;
-          pixels[base + 2] = colors[2] * noise;
-          pixels[base + 3] = colors[3];
-        }
-      }
+      let noise = 0.95 + Math.random() * 0.1;
+      pixels[base] = colors[0] * noise;
+      pixels[base + 1] = colors[1] * noise;
+      pixels[base + 2] = colors[2] * noise;
+      pixels[base + 3] = colors[3];
     }
   }
 }
@@ -180,7 +174,7 @@ function renderWorld() {
   for (let x = 0; x < world.length; x++) {
     for (let y = 0; y < world[0].length; y++) {
       const tile = world[x][y];
-      
+
       if (tile.updated) {
         tileToPixels(tile.x, tile.y, tileSize, tile.tileType);
 
@@ -193,7 +187,7 @@ function renderWorld() {
     }
   }
   updatePixels();
-  log(toUpdate)
+  log(toUpdate);
 
   toUpdate.forEach((tile) => {
     // Check if there's an item here
@@ -218,9 +212,7 @@ function renderWorld() {
       tile.indicator = "";
       tile.setUpdated(true);
     }
-
   });
-
 }
 
 let population = 10;
@@ -245,11 +237,11 @@ farmOrRoadNeighbor = (tile) => {
 
 createFields = (n) => {
   for (let index = 0; index < n; index++) {
-    placeFarm();
+    addFarm();
   }
 };
 
-function placeFarm() {
+function addFarm() {
   // Find optimal tile - next to other farm or next to a road, close to population center
   const possibleTiles = world.flat().reduce((accumulator, currentValue) => {
     if (
@@ -276,15 +268,25 @@ function placeFarm() {
       index++;
     }
     // Place farm plot
-    optimalTile.setTileType("FARM");
-    optimalTile.setUpdated(true);
-    farmTiles.push(optimalTile);
+    placeFarm(optimalTile);
     // Update costs
     updateFarmCosts(optimalTile, 5);
   } else {
     // No possible tiles
   }
 }
+
+placeFarm = (tile) => {
+  tile.setTileType("FARM");
+  tile.setUpdated(true);
+  farmTiles.push(tile);
+};
+
+placeHouse = (tile) => {
+  tile.setItem("HOUSE");
+  tile.setUpdated(true);
+  houseTiles.push(tile);
+};
 
 placeRoad = (x, y) => {
   const tile = world[x][y];
@@ -301,7 +303,7 @@ function buildHouse() {
     if (
       currentValue.tileType !== "WATER" &&
       currentValue.tileType !== "ROAD" &&
-      currentValue.tileType !== "FARM" &&
+      // currentValue.tileType !== "FARM" &&
       currentValue.item !== "HOUSE" &&
       !currentValue.deadEnd &&
       currentValue.houseCost < accumulator.houseCost
@@ -317,9 +319,7 @@ function buildHouse() {
     optimalTile =
       world[Math.round(worldWidth / 2)][Math.round(worldHeight / 2)];
     placeRoad(optimalTile.x, optimalTile.y + 1);
-    optimalTile.setItem("HOUSE");
-    optimalTile.setUpdated(true);
-    houseTiles.push(optimalTile);
+    placeHouse(optimalTile);
   } else {
     // Find nearest road connection
     roads = [...getNeighboringRoads(optimalTile)];
@@ -330,14 +330,30 @@ function buildHouse() {
       roads = roadTiles.sort((tile) => tile.distance(optimalTile));
 
       let joinRoad = null;
+      let numAttempts = 3;
       // Attempt to join road
-      for (let attempt = 0; attempt < 3; attempt++) {
-        const path = aStarPath(
-          optimalTile.x,
-          optimalTile.y,
-          roads[attempt].x,
-          roads[attempt].y
-        );
+      for (let attempt = 0; attempt <= numAttempts; attempt++) {
+        let path;
+        if (attempt === numAttempts) {
+          path = aStar(
+            optimalTile.x,
+            optimalTile.y,
+            roads[attempt].x,
+            roads[attempt].y,
+            world,
+            true
+          );
+        } else {
+          path = aStar(
+            optimalTile.x,
+            optimalTile.y,
+            roads[attempt].x,
+            roads[attempt].y,
+            world,
+            false
+          );
+        }
+
         if (path.length > 0) {
           // Connection found!
           joinRoad = path;
@@ -351,20 +367,16 @@ function buildHouse() {
           placeRoad(step.x, step.y);
         });
         // Place house
-        optimalTile.setItem("HOUSE");
-        optimalTile.setUpdated(true);
-        houseTiles.push(optimalTile);
+        placeHouse(optimalTile);
       } else {
-        console.log("cannot place house");
+        console.log("Destructive construction");
         // No house placed, cannot connect location
         optimalTile.deadEnd = true;
         optimalTile.setHouseCost(Infinity);
       }
     } else {
       // optimalTile has neighbouring road.
-      optimalTile.setItem("HOUSE");
-      optimalTile.setUpdated(true);
-      houseTiles.push(optimalTile);
+      placeHouse(optimalTile);
     }
   }
 
@@ -396,7 +408,7 @@ distanceFromCenter = (x, y) => {
   //   );
 
   //   if (centralRoads.length > 0) {
-  //     const path = aStarPath(x, y, centralRoads[0].x, centralRoads[0].y);
+  //     const path = aStar(x, y, centralRoads[0].x, centralRoads[0].y, world, false);
   //     return path.length > 0 ? path[path.length - 1].g : 0;
   //   } else {
   //     // Fallback to euclidean distance
@@ -546,10 +558,6 @@ getNeighboringRoads = (tile) => {
   return getNeighbors(tile, world).filter((tile) => tile.tileType === "ROAD");
 };
 
-function aStarPath(x1, y1, x2, y2, ignoreItems = false) {
-  return aStar(x1, y1, x2, y2, world, ignoreItems);
-}
-
 let showRoads = false;
 let startA = 0;
 let startB = 0;
@@ -596,7 +604,7 @@ randomRoadRebalance = (utilityThreshold) => {
   }
 
   // Find distance between them
-  const path = aStarPath(a.x, a.y, b.x, b.y);
+  const path = aStar(a.x, a.y, b.x, b.y, world, false);
   let standardDistance = 0;
   try {
     standardDistance = path[path.length - 1].g;
@@ -609,7 +617,7 @@ randomRoadRebalance = (utilityThreshold) => {
   }
 
   // Find distance between them, ignoring houses
-  const noHousePath = aStarPath(a.x, a.y, b.x, b.y, true);
+  const noHousePath = aStar(a.x, a.y, b.x, b.y, world, true);
   const noHouseDistance = noHousePath[noHousePath.length - 1].g;
 
   // Number of houses in no house path
@@ -637,15 +645,15 @@ randomRoadRebalance = (utilityThreshold) => {
 createVillage = (numHouses, farms, farmsPerHouse) => {
   for (let houseNum = 0; houseNum < numHouses; houseNum++) {
     buildHouse();
-    while (farms && farmTiles.length / houseTiles.length <= farmsPerHouse) {
-      // If we're building farms and there are not enough of them already, place some more.'
-      placeFarm();
+    if (farms && houseTiles.length * farmsPerHouse - farmTiles.length > 0) {
+      // If we're building farms and there are not enough of them already, place some more.
+      createFields(houseTiles.length * farmsPerHouse - farmTiles.length);
     }
 
     if (houseNum > 0 && houseNum % 50 === 0) {
       // Improve road network every n times
       // Improve a number of roads while we're at it
-      for (let times = 0; times < 20; times++) {
+      for (let times = 0; times < 10; times++) {
         randomRoadRebalance(5);
       }
     }
@@ -654,11 +662,11 @@ createVillage = (numHouses, farms, farmsPerHouse) => {
 
 // ---------------------------------Standards---------------------------------
 function preload() {
-  iconIMG = {
-    HILL: loadImage("/hill.png"),
-    HOUSE: loadImage("/house.png"),
-    TREE: "",
-  };
+  // iconIMG = {
+  //   HILL: loadImage("/hill.png"),
+  //   HOUSE: loadImage("/house.png"),
+  //   TREE: "",
+  // };
 }
 
 function setup() {
@@ -672,7 +680,7 @@ function setup() {
 }
 
 drawPath = (x, y, x1, y1) => {
-  aStarPath(x, y, x1, y1).forEach((step) => {
+  aStar(x, y, x1, y1, world, false).forEach((step) => {
     placeRoad(step.x, step.y);
   });
 };
@@ -692,20 +700,17 @@ drawMousePosition = () => {
     worldWidth * tileSize,
     worldHeight * tileSize
   );
-}
+};
 
 drawMousePointer = () => {
   const xMouseTile = floor(mouseX / tileSize);
   const yMouseTile = floor(mouseY / tileSize);
-  if (
-    !(xMouseTile > world.length - 1) &&
-    !(yMouseTile > world[0].length - 1)
-  ) {
+  if (!(xMouseTile > world.length - 1) && !(yMouseTile > world[0].length - 1)) {
     const tile = world[xMouseTile][yMouseTile];
     tile.indicator = "O";
     tile.setUpdated(true);
   }
-}
+};
 
 drawMouseTrail = () => {
   if (showRoads) {
@@ -714,23 +719,27 @@ drawMouseTrail = () => {
       endB !== floor(mouseY / tileSize)
     ) {
       // Mouse moved, find new path
-      
+
       endA = floor(mouseX / tileSize);
       endB = floor(mouseY / tileSize);
-      path = aStarPath(startA, startB, endA, endB, ignoreHousesHoverPath).map(
-        (step) => world[step.x][step.y]
-      );
+      path = aStar(
+        startA,
+        startB,
+        endA,
+        endB,
+        world,
+        ignoreHousesHoverPath
+      ).map((step) => world[step.x][step.y]);
 
-      path.forEach(tile => {
+      path.forEach((tile) => {
         tile.indicator = "X";
         tile.setUpdated(true);
       });
 
       world[startA][startB].indicator = "S";
       world[startA][startB].setUpdated(true);
-
     } else {
-      path.forEach(tile => {
+      path.forEach((tile) => {
         tile.indicator = "X";
         tile.setUpdated(true);
       });
@@ -739,19 +748,9 @@ drawMouseTrail = () => {
       world[startA][startB].setUpdated(true);
     }
   }
-}
+};
 
-let path = [];
-let oldPath = [];
-let hover = null;
-let pause = true;
-let endA = 0;
-let endB = 0;
-
-function draw() {
-  drawMousePosition();
-  drawMousePointer();
-  drawMouseTrail();
+drawStatusBar = () => {
   if (
     floor(mouseX) / tileSize < 0 ||
     floor(mouseY / tileSize) < 0 ||
@@ -780,7 +779,20 @@ function draw() {
       worldHeight * tileSize
     );
   }
+};
 
+let path = [];
+let oldPath = [];
+let hover = null;
+let pause = true;
+let endA = 0;
+let endB = 0;
+
+function draw() {
+  drawMousePosition();
+  drawMousePointer();
+  drawMouseTrail();
+  drawStatusBar();
   // draw houses/ farms
   // update world
   frameNum++;
@@ -796,9 +808,14 @@ function draw() {
     ) {
       endA = floor(mouseX / tileSize);
       endB = floor(mouseY / tileSize);
-      path = aStarPath(startA, startB, endA, endB, ignoreHousesHoverPath).map(
-        (step) => world[step.x][step.y]
-      );
+      path = aStar(
+        startA,
+        startB,
+        endA,
+        endB,
+        world,
+        ignoreHousesHoverPath
+      ).map((step) => world[step.x][step.y]);
       path.map((tile) => (tile.indicator = "X"));
       world[startA][startB].indicator = "S";
       oldPath.map((tile) => {
