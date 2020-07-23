@@ -57,6 +57,8 @@ class Tile {
       switch (this.item) {
         case "HOUSE":
           return Infinity;
+        case "FARM":
+          return 20;
         default:
           tileTravelCosts[this.tileType];
       }
@@ -78,6 +80,7 @@ class Tile {
   };
 
   setTileType = (type) => {
+    this.item = null;
     this.tileType = type;
     this.houseCost = tileHouseCosts[type];
     this.travelCost = this.getTravelCost(false);

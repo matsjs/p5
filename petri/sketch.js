@@ -1,4 +1,4 @@
-const worldWidth = 50;
+const worldWidth = 70;
 const worldHeight = 50;
 const tileSize = 20;
 let world = [];
@@ -14,6 +14,7 @@ const tileType = {
 };
 
 let iconIMG = {};
+let pixelizedIMG = {};
 
 function elevFunc(xSize, ySize) {
   // Input world size
@@ -147,8 +148,10 @@ function worldGen(worldWidth, worldHeight) {
   );
 }
 
-function tileToPixels(x, y, tileSize, terrain) {
+function tileToPixels(x, y, tileSize, terrain, item) {
   colors = tileType[terrain];
+  itemPixels = pixelizedIMG[item];
+
   for (let w = 0; w < tileSize; w++) {
     for (let h = 0; h < tileSize; h++) {
       let base =
@@ -158,10 +161,18 @@ function tileToPixels(x, y, tileSize, terrain) {
         y * 4 * tileSize * worldWidth * tileSize;
 
       let noise = 0.95 + Math.random() * 0.1;
-      pixels[base] = colors[0] * noise;
+      pixels[base + 0] = colors[0] * noise;
       pixels[base + 1] = colors[1] * noise;
       pixels[base + 2] = colors[2] * noise;
       pixels[base + 3] = colors[3];
+
+      let imgBase = (w + h * tileSize) * 4;
+      if (item && itemPixels[imgBase + 3]) {
+        pixels[base + 0] = itemPixels[imgBase + 0] * noise;
+        pixels[base + 1] = itemPixels[imgBase + 1] * noise;
+        pixels[base + 2] = itemPixels[imgBase + 2] * noise;
+        pixels[base + 3] = itemPixels[imgBase + 3];
+      }
     }
   }
 }
@@ -176,9 +187,9 @@ function renderWorld() {
       const tile = world[x][y];
 
       if (tile.updated) {
-        tileToPixels(tile.x, tile.y, tileSize, tile.tileType);
+        tileToPixels(tile.x, tile.y, tileSize, tile.tileType, tile.item);
 
-        if (!tile.item && tile.indicator === "") {
+        if (tile.indicator === "") {
           tile.setUpdated(false);
         } else {
           toUpdate.push(tile);
@@ -190,17 +201,6 @@ function renderWorld() {
   log(toUpdate);
 
   toUpdate.forEach((tile) => {
-    // Check if there's an item here
-    if (tile.item) {
-      image(
-        iconIMG[tile.item],
-        tile.x * tileSize,
-        tile.y * tileSize,
-        tileSize,
-        tileSize
-      );
-      tile.setUpdated(false);
-    }
     // Check if there's an indicator here
     if (tile.indicator !== "") {
       color(0);
@@ -226,9 +226,18 @@ function popChange(currentPopulation, growthRate, carryingCapacity) {
   );
 }
 
+timeTick = () => {
+  if (houseTiles.length === 0) {
+    createVillage(5, true, 4);
+  } else {
+    const newHouses = popChange(houseTiles.length, 1.2, farmTiles.length / 2);
+    createVillage(newHouses, true, 4);
+  }
+};
+
 farmOrRoadNeighbor = (tile) => {
   getNeighbors(tile, world).forEach((neighbor) => {
-    if (neighbor.tileType === "ROAD" || neighbor.tileType === "FARM") {
+    if (neighbor.tileType === "ROAD" || neighbor.item === "FARM") {
       return true;
     }
   });
@@ -247,9 +256,8 @@ function addFarm() {
     if (
       currentValue.tileType !== "WATER" &&
       currentValue.tileType !== "ROAD" &&
-      currentValue.tileType !== "FARM" &&
-      currentValue.item !== "HOUSE" &&
-      !currentValue.deadEnd
+      currentValue.item !== "FARM" &&
+      currentValue.item !== "HOUSE"
     ) {
       accumulator.push(currentValue);
     }
@@ -258,12 +266,12 @@ function addFarm() {
 
   if (possibleTiles.length > 0) {
     const bestTiles = possibleTiles.sort(
-      (tileA, tileB) => tileA.farmCost - tileB.farmCost
+      (tileA, tileB) => tileB.farmCost - tileA.farmCost
     );
     let index = 0;
     let optimalTile = bestTiles[index];
     // If dead end, find next spot
-    while (index < bestTiles.length && deadEnd(optimalTile)) {
+    while (index < bestTiles.length) {
       optimalTile = bestTiles[index];
       index++;
     }
@@ -277,7 +285,7 @@ function addFarm() {
 }
 
 placeFarm = (tile) => {
-  tile.setTileType("FARM");
+  tile.setItem("FARM");
   tile.setUpdated(true);
   farmTiles.push(tile);
 };
@@ -290,7 +298,7 @@ placeHouse = (tile) => {
 
 placeRoad = (x, y) => {
   const tile = world[x][y];
-  if (tile.tileType !== "ROAD" && tile.item !== "HOUSE") {
+  if (tile.tileType !== "ROAD" && !tile.item !== "HOUSE") {
     tile.setTileType("ROAD");
     roadTiles.push(tile);
     tile.setUpdated(true);
@@ -303,9 +311,8 @@ function buildHouse() {
     if (
       currentValue.tileType !== "WATER" &&
       currentValue.tileType !== "ROAD" &&
-      // currentValue.tileType !== "FARM" &&
+      // currentValue.item !== "FARM" &&
       currentValue.item !== "HOUSE" &&
-      !currentValue.deadEnd &&
       currentValue.houseCost < accumulator.houseCost
     ) {
       return currentValue;
@@ -371,7 +378,6 @@ function buildHouse() {
       } else {
         console.log("Destructive construction");
         // No house placed, cannot connect location
-        optimalTile.deadEnd = true;
         optimalTile.setHouseCost(Infinity);
       }
     } else {
@@ -442,35 +448,40 @@ updateHouseCosts = (source, range) => {
     const xWorldPos = xLowerBound + tile.x;
     const yWorldPos = yLowerBound + tile.y;
     const worldTile = world[xWorldPos][yWorldPos];
-    // Check if placing a house on tile will make dead end
-    if (worldTile.houseCost !== Infinity && deadEnd(worldTile)) {
-      worldTile.deadEnd = true;
-      worldTile.setHouseCost(Infinity);
-    } else if (!worldTile.deadEnd) {
-      // Pretty orderly house placements, good
-      // Walking cost from placed house plus euclidean distance from last placed house
-      // worldTile.updateHouseCost(
-      //   tile.g + Math.sqrt((tile.x - source.x)**2 + (tile.y - source.y)**2)
-      // );
 
-      // Todo, should include distance to farm plot
+    worldTile.updateHouseCost(
+      tile.g + distanceFromCenter(xWorldPos, yWorldPos)
+    );
 
-      // Nice, circular pattern.
-      worldTile.updateHouseCost(
-        tile.g + distanceFromCenter(xWorldPos, yWorldPos)
-      );
-    }
+    // // Check if placing a house on tile will make dead end
+    // if (worldTile.houseCost !== Infinity && deadEnd(worldTile)) {
+    //   worldTile.deadEnd = true;
+    //   worldTile.setHouseCost(Infinity);
+    // } else if (!worldTile.deadEnd) {
+    //   // Pretty orderly house placements, good
+    //   // Walking cost from placed house plus euclidean distance from last placed house
+    //   // worldTile.updateHouseCost(
+    //   //   tile.g + Math.sqrt((tile.x - source.x)**2 + (tile.y - source.y)**2)
+    //   // );
+
+    //   // Todo, should include distance to farm plot
+
+    //   // Nice, circular pattern.
+    //   worldTile.updateHouseCost(
+    //     tile.g + distanceFromCenter(xWorldPos, yWorldPos)
+    //   );
+    // }
 
     // Update farm costs as well
     if (worldTile.getTravelCost() !== Infinity) {
       const neighbors = getNeighbors(worldTile, world);
       const farmNeighbors = neighbors.reduce(
         (accumulator, currentTile) =>
-          currentTile.tileType === "FARM" ? accumulator + 1 : accumulator,
+          currentTile.item === "FARM" ? accumulator + 1 : accumulator,
         1
       );
       worldTile.updateFarmCost(
-        Math.log(distanceFromCenter(xWorldPos, yWorldPos)) / farmNeighbors
+        distanceFromCenter(xWorldPos, yWorldPos) - farmNeighbors
       );
     }
   });
@@ -497,11 +508,11 @@ updateFarmCosts = (source, range) => {
       const neighbors = getNeighbors(tile, world);
       const farmNeighbors = neighbors.reduce(
         (accumulator, currentTile) =>
-          currentTile.tileType === "FARM" ? accumulator + 1 : accumulator,
+          currentTile.item === "FARM" ? accumulator + 1 : accumulator,
         1
       );
       tile.updateFarmCost(
-        (Math.log(distanceFromCenter(xWorldPos, yWorldPos)) / farmNeighbors) * 2
+        distanceFromCenter(xWorldPos, yWorldPos) - farmNeighbors
       );
     }
   });
@@ -509,32 +520,32 @@ updateFarmCosts = (source, range) => {
   // distanceFromCenter(xWorldPos, yWorldPos)
 };
 
-deadEnd = (tile) => {
-  // A dead end is a tile that will leave a road with nowhere else to go.
-  const roads = getNeighboringRoads(tile);
-  if (roads.length === 0) {
-    return false;
-  } else {
-    // for each neighboring road tile
-    // count number of inaccessible tiles
-    // if they are three, including tile we're checking
-    // that's a dead end
-    return roads
-      .map((roadTile) =>
-        getNeighbors(roadTile, world).reduce((accumulator, currentTile) => {
-          if (
-            currentTile === tile ||
-            currentTile.getTravelCost() === Infinity
-          ) {
-            return accumulator + 1;
-          } else {
-            return accumulator;
-          }
-        }, 0)
-      )
-      .some((blockedTiles) => blockedTiles >= 3);
-  }
-};
+// deadEnd = (tile) => {
+//   // A dead end is a tile that will leave a road with nowhere else to go.
+//   const roads = getNeighboringRoads(tile);
+//   if (roads.length === 0) {
+//     return false;
+//   } else {
+//     // for each neighboring road tile
+//     // count number of inaccessible tiles
+//     // if they are three, including tile we're checking
+//     // that's a dead end
+//     return roads
+//       .map((roadTile) =>
+//         getNeighbors(roadTile, world).reduce((accumulator, currentTile) => {
+//           if (
+//             currentTile === tile ||
+//             currentTile.getTravelCost() === Infinity
+//           ) {
+//             return accumulator + 1;
+//           } else {
+//             return accumulator;
+//           }
+//         }, 0)
+//       )
+//       .some((blockedTiles) => blockedTiles >= 3);
+//   }
+// };
 
 let ignoreHousesHoverPath = false;
 // Controls:
@@ -545,12 +556,13 @@ keyPressed = () => {
   if (keyCode === 72) {
     renderWorld();
     buildHouse();
-  }
-  if (keyCode === 172) {
+  } else if (keyCode === 172) {
     ignoreHousesHoverPath = !ignoreHousesHoverPath;
-  }
-  if (keyCode === 49) {
+  } else if (keyCode === 49) {
     layRoad = true;
+  } else if (keyCode == 39) {
+    console.log("timetick");
+    timeTick();
   }
 };
 
@@ -659,22 +671,87 @@ createVillage = (numHouses, farms, farmsPerHouse) => {
     }
   }
 };
+imgToPixels = (toPixelize) => {
+  let pixelized = [];
+  toPixelize.loadPixels();
+
+  for (let y = 0; y < toPixelize.height; y++) {
+    for (let x = 0; x < toPixelize.width; x++) {
+      let index = (x + y * toPixelize.width) * 4;
+
+      pixelized = pixelized.concat([
+        toPixelize.pixels[index],
+        toPixelize.pixels[index + 1],
+        toPixelize.pixels[index + 2],
+        toPixelize.pixels[index + 3],
+      ]);
+    }
+  }
+  return pixelized;
+};
 
 // ---------------------------------Standards---------------------------------
 function preload() {
-  // iconIMG = {
-  //   HILL: loadImage("/hill.png"),
-  //   HOUSE: loadImage("/house.png"),
-  //   TREE: "",
-  // };
+  iconIMG = {
+    HILL: loadImage("/assets/hill.png"),
+    HOUSE: loadImage("/assets/house.png"),
+    TREE: loadImage("/assets/tree.png"),
+    FARM: loadImage("/assets/farm.png"),
+  };
 }
+
+times = (element, times) => {
+  let accumulator = [];
+  for (let index = 0; index < times; index++) {
+    if (Array.isArray(element)) {
+      accumulator = accumulator.concat(element);
+    } else {
+      accumulator.push(element);
+    }
+  }
+  return accumulator;
+};
+
+iconScale = (img, scale) => {
+  let wScaled = [];
+  for (let index = 0; index < img.length / 4; index++) {
+    let pixelValues = [
+      img[index * 4 + 0],
+      img[index * 4 + 1],
+      img[index * 4 + 2],
+      img[index * 4 + 3],
+    ];
+    wScaled = wScaled.concat(times(pixelValues, scale));
+  }
+
+  let hScaled = [];
+  for (let index = 0; index < wScaled.length / (4 * tileSize); index++) {
+    hScaled = hScaled.concat(
+      times(
+        wScaled.slice(
+          index * tileSize * 4,
+          tileSize * 4 + index * tileSize * 4
+        ),
+        2
+      )
+    );
+  }
+  return hScaled;
+};
 
 function setup() {
   cnv = createCanvas(worldWidth * tileSize, worldHeight * tileSize);
   cnv.mouseClicked(registerClick);
+  pixelDensity(1);
+  // Object.keys(iconIMG).forEach((key) => iconScale(iconIMG[key], 4));
+  pixelizedIMG = {
+    HILL: iconScale(imgToPixels(iconIMG["HILL"]), tileSize / 10),
+    HOUSE: iconScale(imgToPixels(iconIMG["HOUSE"]), tileSize / 10),
+    TREE: iconScale(imgToPixels(iconIMG["TREE"]), tileSize / 10),
+    FARM: iconScale(imgToPixels(iconIMG["FARM"]), tileSize / 10),
+  };
   noiseDetail(2, 0.1);
   noiseSeed(frameNum);
-  pixelDensity(1);
   world = worldGen(worldWidth, worldHeight);
   renderWorld();
 }
@@ -773,11 +850,25 @@ drawStatusBar = () => {
             ", tCost:" +
             Math.round(t.getTravelCost()) +
             ", fCost:" +
-            Math.round(t.farmCost) +
-            (t.deadEnd ? ", dead-end" : ""),
+            Math.round(t.farmCost),
       0,
       worldHeight * tileSize
     );
+  }
+};
+
+drawPopCenter = () => {
+  if (houseTiles.length > 0) {
+    const xAvg =
+      houseTiles.reduce((res, curr) => res + curr.x, 0) / houseTiles.length;
+    const yAvg =
+      houseTiles.reduce((res, curr) => res + curr.y, 0) / houseTiles.length;
+
+    stroke(255, 0, 0);
+    strokeWeight(20);
+    point(xAvg * tileSize, yAvg * tileSize);
+    stroke(0, 0, 0);
+    strokeWeight(0);
   }
 };
 
@@ -793,6 +884,8 @@ function draw() {
   drawMousePointer();
   drawMouseTrail();
   drawStatusBar();
+  // drawPopCenter();
+
   // draw houses/ farms
   // update world
   frameNum++;
@@ -845,6 +938,7 @@ function draw() {
     hover = null;
   }
   renderWorld();
+
   // renderItems();
   if (hover !== null && hover.indicator !== "X") {
     hover.indicator = "";
