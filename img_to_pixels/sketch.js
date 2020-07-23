@@ -8,13 +8,37 @@ let pixelized = [];
 
 function preload() {
   toPixelize = loadImage("/imgs/house.png");
+  console.log(toPixelize);
+
+}
+
+imgToPixels = (path) => {
+  toPixelize = loadImage(path);
+  console.log(toPixelize);
+  
+  toPixelize.loadPixels();
+  for (let y = 0; y < toPixelize.height; y++) {
+    for (let x = 0; x < toPixelize.width; x++) {
+      let index = (x + y * toPixelize.width) * 4;
+      pixelized = pixelized.concat([
+        toPixelize.pixels[index],
+        toPixelize.pixels[index + 1],
+        toPixelize.pixels[index + 2],
+        toPixelize.pixels[index + 3],
+      ]);
+    }
+  }
+  return pixelized;
 }
 
 function setup() {
   createCanvas(xSize, ySize);
   pixelDensity(1);
+  console.log(toPixelize);
 
   toPixelize.loadPixels();
+  console.log(toPixelize);
+
   for (let y = 0; y < toPixelize.height; y++) {
     for (let x = 0; x < toPixelize.width; x++) {
       let index = (x + y * toPixelize.width) * 4;
