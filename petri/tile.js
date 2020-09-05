@@ -1,11 +1,11 @@
 const tileHouseCosts = {
   GRASS: 0,
-  SAND: 1,
-  WATER: Infinity,
-  MOUNTAIN: 10,
-  SNOW: Infinity,
-  FARM: 20,
-  ROAD: Infinity,
+  SAND: -1,
+  WATER: -Infinity,
+  MOUNTAIN: -10,
+  SNOW: -Infinity,
+  FARM: -20,
+  ROAD: -Infinity,
 };
 
 const tileTravelCosts = {
@@ -20,12 +20,12 @@ const tileTravelCosts = {
 
 const tileFarmCosts = {
   GRASS: 0,
-  SAND: Infinity,
-  WATER: Infinity,
-  MOUNTAIN: 1000,
-  SNOW: Infinity,
-  FARM: Infinity,
-  ROAD: Infinity,
+  SAND: -Infinity,
+  WATER: -Infinity,
+  MOUNTAIN: -1000,
+  SNOW: -Infinity,
+  FARM: -Infinity,
+  ROAD: -Infinity,
 }
 
 class Tile {
@@ -34,9 +34,9 @@ class Tile {
     this.x = x;
     this.y = y;
     this.item = item;
-    this.houseCost = Infinity;
+    this.houseCost = tileHouseCosts[tileType];
     this.travelCost = tileTravelCosts[tileType];
-    this.farmCost = Infinity;
+    this.farmCost = tileFarmCosts[tileType];
     this.updated = true;
     this.indicator = "";
     this.deadEnd = false;
@@ -75,6 +75,8 @@ class Tile {
     this.item = item;
     if (item === "HOUSE") {
       this.houseCost = Infinity;
+    } else if (item === "FARM") {
+      // this.houseCost = this.tileHouseCosts[this.tileType];
     }
     this.travelCost = this.getTravelCost(false);
   };
@@ -90,11 +92,22 @@ class Tile {
     this.houseCost = cost + tileHouseCosts[this.tileType];
   };
 
+  addHouseCost = (cost) => {
+    this.houseCost = cost + this.houseCost;
+  }
+
+  addFarmCost = (cost) => {
+    this.farmCost = cost + this.farmCost;
+  }
+
   updateHouseCost = (cost) => {
     if (cost + tileHouseCosts[this.tileType] < this.houseCost) {
       this.houseCost = cost + tileHouseCosts[this.tileType];
     }
   };
+
+  getHouseCost = () => (this.item === "FARM" ? this.houseCost / 2.5 : this.houseCost)
+  
 
   travelDistance = (other) => {
     if (other instanceof Tile) {

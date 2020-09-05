@@ -1,7 +1,7 @@
 aStar = (x1, y1, x2, y2, world, ignoreItems) => {
   const start = new Vert(x1, y1, 0, null);
   const goal = new Vert(x2, y2, 0, null);
-  const outPath = findPath(start, goal, world, euclideanDistance, ignoreItems);
+  const outPath = findPath(start, goal, world, euclideanTileDistance, ignoreItems);
 
   return outPath;
 };
@@ -88,7 +88,7 @@ findPath = (start, goal, world, h, ignoreItems) => {
   }
 };
 
-euclideanDistance = (a, b) => {
+euclideanTileDistance = (a, b) => {
   return sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
 };
 

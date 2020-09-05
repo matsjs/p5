@@ -1,5 +1,5 @@
-const worldWidth = 70;
-const worldHeight = 50;
+const worldWidth = 100;
+const worldHeight = 100;
 const tileSize = 20;
 let world = [];
 let frameNum = 42;
@@ -266,7 +266,7 @@ function addFarm() {
 
   if (possibleTiles.length > 0) {
     const bestTiles = possibleTiles.sort(
-      (tileA, tileB) => tileB.farmCost - tileA.farmCost
+      (tileA, tileB) => tileA.farmCost - tileB.farmCost
     );
     let index = 0;
     let optimalTile = bestTiles[index];
@@ -276,11 +276,62 @@ function addFarm() {
       index++;
     }
     // Place farm plot
-    placeFarm(optimalTile);
+    placeItem(optimalTile, "FARM");
     // Update costs
-    updateFarmCosts(optimalTile, 5);
+    updateCosts(optimalTile, 5, true);
   } else {
     // No possible tiles
+  }
+}
+
+removeTileItem = (tile) => {
+  if (tile.item !== null) {
+    switch (tile.item) {
+      case "HOUSE":
+        removeHouse(tile);
+        break;
+      case "FARM":
+        removeFarm(tile);
+        break;
+      default:
+        break;
+    }
+  }
+}
+
+
+placeItem = (tile, item) => {
+  removeTileItem(tile);
+  switch (item) {
+    case "HOUSE":
+      placeHouse(tile);
+      break;
+    case "FARM":
+      placeFarm(tile);
+      break;
+    default:
+      break;
+  }
+}
+
+
+removeFarm = (tile) => {
+  const tileIndex = farmTiles.indexOf(tile);
+  if (tileIndex >= 0) {
+    tile.setItem(null);
+    tile.setUpdated(true);
+    farmTiles.splice(tileIndex, 1);
+    updateCosts(tile, 5, false);
+  }
+}
+
+removeHouse = (tile) => {
+  const tileIndex = houseTiles.indexOf(tile);
+  if (tileIndex >= 0) {
+    tile.setItem(null);
+    tile.setUpdated(true);
+    houseTiles.splice(tileIndex, 1);
+    updateCosts(tile, 5, false);
   }
 }
 
@@ -296,12 +347,15 @@ placeHouse = (tile) => {
   houseTiles.push(tile);
 };
 
+
+
 placeRoad = (x, y) => {
   const tile = world[x][y];
   if (tile.tileType !== "ROAD" && !tile.item !== "HOUSE") {
     tile.setTileType("ROAD");
     roadTiles.push(tile);
     tile.setUpdated(true);
+    updateCosts(tile, 2, true)
   }
 };
 
@@ -311,9 +365,8 @@ function buildHouse() {
     if (
       currentValue.tileType !== "WATER" &&
       currentValue.tileType !== "ROAD" &&
-      // currentValue.item !== "FARM" &&
       currentValue.item !== "HOUSE" &&
-      currentValue.houseCost < accumulator.houseCost
+      currentValue.getHouseCost() > accumulator.getHouseCost()
     ) {
       return currentValue;
     } else {
@@ -326,7 +379,7 @@ function buildHouse() {
     optimalTile =
       world[Math.round(worldWidth / 2)][Math.round(worldHeight / 2)];
     placeRoad(optimalTile.x, optimalTile.y + 1);
-    placeHouse(optimalTile);
+    placeItem(optimalTile, "HOUSE");
   } else {
     // Find nearest road connection
     roads = [...getNeighboringRoads(optimalTile)];
@@ -335,13 +388,12 @@ function buildHouse() {
 
       // Sort by distance
       roads = roadTiles.sort((tile) => tile.distance(optimalTile));
-
       let joinRoad = null;
-      let numAttempts = 3;
+      let numAttempts = 3 < roads.length ? 3 : roads.length;
       // Attempt to join road
-      for (let attempt = 0; attempt <= numAttempts; attempt++) {
+      for (let attempt = 0; attempt < numAttempts; attempt++) {
         let path;
-        if (attempt === numAttempts) {
+        if (attempt === (numAttempts-1)) {
           path = aStar(
             optimalTile.x,
             optimalTile.y,
@@ -374,20 +426,20 @@ function buildHouse() {
           placeRoad(step.x, step.y);
         });
         // Place house
-        placeHouse(optimalTile);
+        placeItem(optimalTile, "HOUSE");
       } else {
         console.log("Destructive construction");
         // No house placed, cannot connect location
-        optimalTile.setHouseCost(Infinity);
+        optimalTile.setHouseCost(-Infinity);
       }
     } else {
       // optimalTile has neighbouring road.
-      placeHouse(optimalTile);
+      placeItem(optimalTile, "HOUSE");
     }
   }
 
   // Update cost gradient for houses
-  updateHouseCosts(optimalTile, 5);
+  updateCosts(optimalTile, 5, true);
 }
 
 distanceFromCenter = (x, y) => {
@@ -403,31 +455,9 @@ distanceFromCenter = (x, y) => {
   const yMean = yCumulative / houseTiles.length;
 
   return Math.sqrt((x - xMean) ** 2 + (y - yMean) ** 2);
-
-  // if (houseTiles.length > 1) {
-  //   // Euclidean distance
-  //   // return (Math.sqrt((x-xMean)**2 + (y-yMean)**2))
-
-  //   // Walking distance from spot to center
-  //   const centralRoads = getNeighboringRoads(
-  //     world[Math.floor(xMean)][Math.floor(yMean)]
-  //   );
-
-  //   if (centralRoads.length > 0) {
-  //     const path = aStar(x, y, centralRoads[0].x, centralRoads[0].y, world, false);
-  //     return path.length > 0 ? path[path.length - 1].g : 0;
-  //   } else {
-  //     // Fallback to euclidean distance
-  //     return Math.sqrt((x - xMean) ** 2 + (y - yMean) ** 2);
-  //   }
-  // } else {
-  //   return 0;
-  // }
 };
 
-updateHouseCosts = (source, range) => {
-  // TODO Expensive, update
-  // Function that creates a gradient from a given tile, with lower cost closer in travel distance from origin
+updateCosts = (source, range, additive) => {
   const xPos = source.x;
   const yPos = source.y;
   const xUpperBound =
@@ -436,116 +466,27 @@ updateHouseCosts = (source, range) => {
   const yUpperBound =
     yPos + range + 1 < world[0].length ? yPos + range + 1 : world[0].length;
   const yLowerBound = yPos - range > 0 ? yPos - range : 0;
-  const subRegion = world
-    .slice(xLowerBound, xUpperBound)
-    .map((col) => col.slice(yLowerBound, yUpperBound));
-  const regionDistances = dijkstra(range, range, subRegion);
-
-  regionDistances.flat().forEach((tile) => {
-    // COST IS DISTANCE TO NEAREST HOUSE PLUS DISTANCE TO CENTER OF MASS
-
-    // Should also be distance to nearest road
-    const xWorldPos = xLowerBound + tile.x;
-    const yWorldPos = yLowerBound + tile.y;
-    const worldTile = world[xWorldPos][yWorldPos];
-
-    worldTile.updateHouseCost(
-      tile.g + distanceFromCenter(xWorldPos, yWorldPos)
-    );
-
-    // // Check if placing a house on tile will make dead end
-    // if (worldTile.houseCost !== Infinity && deadEnd(worldTile)) {
-    //   worldTile.deadEnd = true;
-    //   worldTile.setHouseCost(Infinity);
-    // } else if (!worldTile.deadEnd) {
-    //   // Pretty orderly house placements, good
-    //   // Walking cost from placed house plus euclidean distance from last placed house
-    //   // worldTile.updateHouseCost(
-    //   //   tile.g + Math.sqrt((tile.x - source.x)**2 + (tile.y - source.y)**2)
-    //   // );
-
-    //   // Todo, should include distance to farm plot
-
-    //   // Nice, circular pattern.
-    //   worldTile.updateHouseCost(
-    //     tile.g + distanceFromCenter(xWorldPos, yWorldPos)
-    //   );
-    // }
-
-    // Update farm costs as well
-    if (worldTile.getTravelCost() !== Infinity) {
-      const neighbors = getNeighbors(worldTile, world);
-      const farmNeighbors = neighbors.reduce(
-        (accumulator, currentTile) =>
-          currentTile.item === "FARM" ? accumulator + 1 : accumulator,
-        1
-      );
-      worldTile.updateFarmCost(
-        distanceFromCenter(xWorldPos, yWorldPos) - farmNeighbors
-      );
+  const maxDist = euclideanDistance(xPos, yPos, xUpperBound, yUpperBound);
+  for (let x = xLowerBound; x < xUpperBound; x++) {
+    for (let y = yLowerBound; y < yUpperBound; y++) {
+      const tile = world[x][y];
+      if (x === xPos && y === yPos) {
+      } else if (additive) {
+        tile.addHouseCost(maxDist - euclideanDistance(xPos, yPos, x, y))
+        if (tile.item !== "HOUSE") {
+          tile.addFarmCost(maxDist - euclideanDistance(xPos, yPos, x, y))
+        }
+      } else if (!additive) {
+        tile.addHouseCost(-(maxDist - euclideanDistance(xPos, yPos, x, y)))
+        tile.addFarmCost(-(maxDist - euclideanDistance(xPos, yPos, x, y)))
+      }
     }
-  });
+  }
 };
 
-updateFarmCosts = (source, range) => {
-  // TODO Expensive, update
-  // Function that creates a gradient from a given tile, with lower cost closer in travel distance from origin
-  const xPos = source.x;
-  const yPos = source.y;
-  const xUpperBound =
-    xPos + range + 1 < world.length ? xPos + range + 1 : world.length;
-  const xLowerBound = xPos - range > 0 ? xPos - range : 0;
-  const yUpperBound =
-    yPos + range + 1 < world[0].length ? yPos + range + 1 : world[0].length;
-  const yLowerBound = yPos - range > 0 ? yPos - range : 0;
-  const subRegion = world
-    .slice(xLowerBound, xUpperBound)
-    .map((col) => col.slice(yLowerBound, yUpperBound));
-  subRegion.flat().forEach((tile) => {
-    if (tile.tileType === "GRASS" && tile.getTravelCost() !== Infinity) {
-      const xWorldPos = xLowerBound + tile.x;
-      const yWorldPos = yLowerBound + tile.y;
-      const neighbors = getNeighbors(tile, world);
-      const farmNeighbors = neighbors.reduce(
-        (accumulator, currentTile) =>
-          currentTile.item === "FARM" ? accumulator + 1 : accumulator,
-        1
-      );
-      tile.updateFarmCost(
-        distanceFromCenter(xWorldPos, yWorldPos) - farmNeighbors
-      );
-    }
-  });
-
-  // distanceFromCenter(xWorldPos, yWorldPos)
-};
-
-// deadEnd = (tile) => {
-//   // A dead end is a tile that will leave a road with nowhere else to go.
-//   const roads = getNeighboringRoads(tile);
-//   if (roads.length === 0) {
-//     return false;
-//   } else {
-//     // for each neighboring road tile
-//     // count number of inaccessible tiles
-//     // if they are three, including tile we're checking
-//     // that's a dead end
-//     return roads
-//       .map((roadTile) =>
-//         getNeighbors(roadTile, world).reduce((accumulator, currentTile) => {
-//           if (
-//             currentTile === tile ||
-//             currentTile.getTravelCost() === Infinity
-//           ) {
-//             return accumulator + 1;
-//           } else {
-//             return accumulator;
-//           }
-//         }, 0)
-//       )
-//       .some((blockedTiles) => blockedTiles >= 3);
-//   }
-// };
+euclideanDistance = (sourceX, sourceY, destX, destY) => {
+  return Math.sqrt((sourceX - destX) ** 2 + (sourceY - destY) ** 2)
+}
 
 let ignoreHousesHoverPath = false;
 // Controls:
@@ -643,9 +584,7 @@ randomRoadRebalance = (utilityThreshold) => {
     // If utility is good enough, tear down some houses and create that road.
     noHousePath.forEach((step) => {
       const tile = world[step.x][step.y];
-      if (tile.item === "HOUSE") {
-        removeHouse(tile);
-      }
+      removeTileItem(tile);
 
       if (tile.tileType !== "ROAD") {
         placeRoad(step.x, step.y);
@@ -840,17 +779,17 @@ drawStatusBar = () => {
       layRoad && showRoads
         ? "PLACING ROAD! "
         : "" +
-            houseTiles.length +
-            " houses" +
-            ", t: " +
-            t.tileType +
-            (t.item !== null ? ", item: " + t.item : "") +
-            ", hCost:" +
-            Math.round(t.houseCost) +
-            ", tCost:" +
-            Math.round(t.getTravelCost()) +
-            ", fCost:" +
-            Math.round(t.farmCost),
+        houseTiles.length +
+        " houses" +
+        ", t: " +
+        t.tileType +
+        (t.item !== null ? ", item: " + t.item : "") +
+        ", hCost:" +
+        Math.round(t.houseCost) +
+        ", tCost:" +
+        Math.round(t.getTravelCost()) +
+        ", fCost:" +
+        Math.round(t.farmCost),
       0,
       worldHeight * tileSize
     );
